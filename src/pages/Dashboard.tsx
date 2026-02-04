@@ -48,36 +48,60 @@ const Dashboard = () => {
   };
 
   const handleSaveTask = async (data: TaskFormData) => {
-    if (editingTask) {
-      await updateTask(editingTask.id, data);
+    try {
+      if (editingTask) {
+        await updateTask(editingTask.id, data);
+        toast({
+          title: 'Task updated',
+          description: 'Your task has been updated successfully.',
+        });
+      } else {
+        await addTask(data);
+        toast({
+          title: 'Task created',
+          description: 'Your new task has been created.',
+        });
+      }
+    } catch (error) {
       toast({
-        title: 'Task updated',
-        description: 'Your task has been updated successfully.',
-      });
-    } else {
-      await addTask(data);
-      toast({
-        title: 'Task created',
-        description: 'Your new task has been created.',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save task. Please try again.',
+        variant: 'destructive',
       });
     }
   };
 
   const handleDeleteTask = async (id: string) => {
-    await deleteTask(id);
-    toast({
-      title: 'Task deleted',
-      description: 'The task has been removed.',
-      variant: 'destructive',
-    });
+    try {
+      await deleteTask(id);
+      toast({
+        title: 'Task deleted',
+        description: 'The task has been removed.',
+        variant: 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete task. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleStatusChange = async (id: string, status: Status) => {
-    await updateTaskStatus(id, status);
-    toast({
-      title: 'Status updated',
-      description: `Task moved to ${status.replace('-', ' ')}.`,
-    });
+    try {
+      await updateTaskStatus(id, status);
+      toast({
+        title: 'Status updated',
+        description: `Task moved to ${status.replace('-', ' ')}.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update task status. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {

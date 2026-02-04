@@ -35,7 +35,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      if (!res.ok) return { error: new Error("Registration failed") };
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Registration failed" }));
+        return { error: new Error(error.message || "Registration failed") };
+      }
+      
       const json = await res.json();
       localStorage.setItem("token", json.token);
       localStorage.setItem("user", JSON.stringify(json.user));
@@ -54,7 +59,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      if (!res.ok) return { error: new Error("Login failed") };
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Login failed" }));
+        return { error: new Error(error.message || "Invalid credentials") };
+      }
+      
       const json = await res.json();
       localStorage.setItem("token", json.token);
       localStorage.setItem("user", JSON.stringify(json.user));

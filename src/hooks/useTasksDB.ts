@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Task, TaskFormData, Status, Priority } from '@/types/task';
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5002";
+import { apiRequest, handleApiResponse } from '@/lib/api';
 
 export type SortField = 'created_at' | 'due_date' | 'priority' | 'title';
 export type SortOrder = 'asc' | 'desc';
@@ -29,25 +29,25 @@ export const useTasksDB = () => {
   const [itemsPerPage] = useState(9);
 
   const fetchTasks = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/tasks?userId=${encodeURIComponent(user.id)}`);
-      const data = await res.json();
-      interface TaskResponse {
-        _id?: string;
-        id?: string;
-        title: string;
-        description: string;
-        priority: Priority;
-        status: Status;
-        dueDate?: string | null;
-        createdAt?: string;
-        userId: string;
+      const res = await apiRequest("/api/tasks");
+      
+      // Handle 401 Unauthorized - token expired or invalid
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return;
       }
-      const raw = (data || []) as TaskResponse[];
-      const mapped: Task[] = raw.map((t) => ({
+      
+      const data = await handleApiResponse<TaskResponse[]>(res);
+      const mapped: Task[] = data.map((t) => ({
         id: t._id || t.id || "",
         title: t.title,
         description: t.description,
@@ -59,10 +59,29 @@ export const useTasksDB = () => {
       }));
       setTasks(mapped);
     } catch (e) {
-      setTasks([]);
+      console.error("Error fetching tasks:", e);
+      // Don't clear tasks on error, keep existing data
+      if (e instanceof Error && e.message.includes("401")) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
+
+  interface TaskResponse {
+    _id?: string;
+    id?: string;
+    title: string;
+    description: string;
+    priority: Priority;
+    status: Status;
+    dueDate?: string | null;
+    createdAt?: string;
+    userId: string;
+  }
 
   useEffect(() => {
     fetchTasks();
@@ -72,37 +91,34 @@ export const useTasksDB = () => {
     if (!user) return null;
 
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
+      const res = await apiRequest("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           title: data.title,
           description: data.description,
           priority: data.priority,
           status: data.status,
           dueDate: data.dueDate?.toISOString() ?? null,
-        })
+        }),
       });
-      if (res.ok) {
-        const newTask = await res.json();
-        const mapped: Task = {
-          id: newTask._id || newTask.id,
-          title: newTask.title,
-          description: newTask.description,
-          priority: newTask.priority as Priority,
-          status: newTask.status as Status,
-          dueDate: newTask.dueDate ? new Date(newTask.dueDate) : null,
-          createdAt: newTask.createdAt ? new Date(newTask.createdAt) : new Date(),
-          userId: newTask.userId,
-        };
-        setTasks(prev => [mapped, ...prev]);
-        return mapped;
-      }
+      
+      const newTask = await handleApiResponse<TaskResponse>(res);
+      const mapped: Task = {
+        id: newTask._id || newTask.id || "",
+        title: newTask.title,
+        description: newTask.description,
+        priority: newTask.priority as Priority,
+        status: newTask.status as Status,
+        dueDate: newTask.dueDate ? new Date(newTask.dueDate) : null,
+        createdAt: newTask.createdAt ? new Date(newTask.createdAt) : new Date(),
+        userId: newTask.userId,
+      };
+      setTasks(prev => [mapped, ...prev]);
+      return mapped;
     } catch (e) {
-      return null;
+      console.error("Error creating task:", e);
+      throw e;
     }
-    return null;
   }, [user]);
 
   const updateTask = useCallback(async (id: string, data: Partial<TaskFormData>) => {
@@ -114,31 +130,34 @@ export const useTasksDB = () => {
     if (data.dueDate !== undefined) updates.dueDate = data.dueDate?.toISOString() ?? null;
 
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
+      const res = await apiRequest(`/api/tasks/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates)
+        body: JSON.stringify(updates),
       });
-      if (res.ok) {
-        setTasks(prev =>
-          prev.map(task =>
-            task.id === id ? { ...task, ...data } : task
-          )
-        );
-      }
+      
+      const updatedTask = await handleApiResponse<TaskResponse>(res);
+      setTasks(prev =>
+        prev.map(task =>
+          task.id === id ? {
+            ...task,
+            ...data,
+            id: updatedTask._id || updatedTask.id || task.id,
+          } : task
+        )
+      );
     } catch (e) {
-      return;
+      console.error("Error updating task:", e);
+      throw e;
     }
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setTasks(prev => prev.filter(task => task.id !== id));
-      }
+      await apiRequest(`/api/tasks/${id}`, { method: "DELETE" });
+      setTasks(prev => prev.filter(task => task.id !== id));
     } catch (e) {
-      return;
+      console.error("Error deleting task:", e);
+      throw e;
     }
   }, []);
 
